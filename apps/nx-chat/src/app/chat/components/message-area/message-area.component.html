@@ -1,0 +1,74 @@
+@let selectedConversation = chatService.selectedConversation; @let messages =
+chatService.messages; @let isLoadingMessages = chatService.isLoadingMessages;
+
+<div class="flex flex-col h-full">
+  @if (selectedConversation()) {
+  <div
+    class="p-4 border-b border-gray-200 bg-white flex items-center space-x-3"
+  >
+    <div
+      class="w-10 h-10 rounded-full bg-gray-300 text-gray-600 flex items-center justify-center text-sm font-bold"
+    >
+      {{ getInitials(selectedConversation()?.otherParticipant) }}
+    </div>
+    <h2 class="text-lg font-medium">
+      {{ getConversationDisplay() }}
+    </h2>
+  </div>
+  } @else {
+  <div class="p-4 border-b border-gray-200 bg-white text-center text-gray-500">
+    Select a conversation to start chatting
+  </div>
+  }
+
+  <div
+    #messageContainer
+    class="flex-grow overflow-y-auto p-4 space-y-4 bg-gray-50"
+  >
+    @if (isLoadingMessages()) {
+    <div class="text-center text-gray-400 italic">Loading messages...</div>
+    } @if (!isLoadingMessages() && messages().length === 0 &&
+    selectedConversation()) {
+    <div class="text-center text-gray-400 italic">
+      No messages yet. Start the conversation!
+    </div>
+    } @for (message of messages(); track message.id) {
+    <div
+      class="flex"
+      [class.justify-end]="message.userId === currentUser()?.id"
+    >
+      <div
+        class="flex items-start max-w-xs lg:max-w-md"
+        [class.flex-row-reverse]="message.userId === currentUser()?.id"
+      >
+        <div
+          class="w-6 h-6 rounded-full bg-gray-300 text-gray-600 flex items-center justify-center text-xs font-bold mx-2 flex-shrink-0"
+        >
+          {{ getInitials(message.user) }}
+        </div>
+
+        <div
+          class="px-4 py-2 rounded-lg"
+          [ngClass]="{
+            'bg-indigo-500 text-white': message.userId === currentUser()?.id,
+            'bg-white text-gray-800 border border-gray-200':
+              message.userId !== currentUser()?.id
+          }"
+        >
+          <p class="text-sm">{{ message.content }}</p>
+          <p
+            class="text-xs mt-1 opacity-70"
+            [class.text-right]="message.userId === currentUser()?.id"
+          >
+            {{ message.createdAt | date : 'shortTime' }}
+          </p>
+        </div>
+      </div>
+    </div>
+    }
+  </div>
+
+  @if (selectedConversation()) {
+  <app-message-input></app-message-input>
+  }
+</div>

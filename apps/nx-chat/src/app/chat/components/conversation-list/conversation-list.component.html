@@ -1,0 +1,53 @@
+<!-- eslint-disable @angular-eslint/template/interactive-supports-focus -->
+<!-- eslint-disable @angular-eslint/template/click-events-have-key-events -->
+@let conversations = chatService.conversations;
+
+<div class="flex flex-col h-full">
+  @if (chatService.isLoadingConversations()) {
+  <div class="p-4 text-center text-gray-500">Loading conversations...</div>
+  } @if (chatService.error()) {
+  <div class="p-4 text-center text-red-500">{{ chatService.error() }}</div>
+  } @if (!chatService.isLoadingConversations() && conversations().length > 0) {
+  <ul class="divide-y divide-gray-200 flex-grow overflow-y-auto">
+    @for (convo of conversations(); track convo.id) {
+    <li
+      (click)="selectConversation(convo)"
+      class="p-3 hover:bg-gray-100 cursor-pointer flex items-center space-x-3"
+      [class.bg-indigo-100]="
+        chatService.selectedConversation()?.id === convo.id
+      "
+    >
+      <div
+        class="w-10 h-10 rounded-full bg-indigo-500 text-white flex items-center justify-center text-sm font-bold"
+      >
+        {{
+          getInitials(
+            getConversationDisplay(convo),
+            convo.otherParticipant?.email
+          )
+        }}
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-medium text-gray-900 truncate">
+          {{ getConversationDisplay(convo) }}
+        </p>
+        @if (convo.lastMessage) {
+        <p class="text-xs text-gray-500 truncate">
+          {{ convo.lastMessage.content }}
+        </p>
+        } @else {
+        <p class="text-xs text-gray-400 italic">No messages yet</p>
+        }
+      </div>
+      @if (convo.lastMessage) {
+      <div class="text-xs text-gray-400 whitespace-nowrap">
+        {{ convo.lastMessage.createdAt | date : 'shortTime' }}
+      </div>
+      }
+    </li>
+    }
+  </ul>
+  } @else if (!chatService.isLoadingConversations()) {
+  <div class="p-4 text-center text-gray-500">No conversations found.</div>
+  }
+</div>

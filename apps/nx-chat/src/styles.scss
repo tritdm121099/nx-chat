@@ -3,3 +3,21 @@
 @tailwind utilities;
 
 /* You can add global styles to this file, and also import other style files */
+body {
+  @apply bg-gray-100 text-gray-800;
+}
+
+/* Example: Custom scrollbar styling (optional) */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-gray-200 dark:bg-gray-700 rounded-full;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-400 dark:bg-gray-500 rounded-full;
+}
+::-webkit-scrollbar-thumb:hover {
+   @apply bg-gray-500 dark:bg-gray-400;
+}

@@ -1,0 +1,10 @@
+@token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6InRlc3RAc2FtcGxlLmNvbSIsInN1YiI6MSwiaWF0IjoxNzQ2ODcxNDg3LCJleHAiOjE3NDY5NTc4ODd9.KDPZPNrvHlr1A7i9U2B-bLAWQ4ziNIa0baJ5oyh9h04
+@baseUrl=http://localhost:3000
+
+###
+GET {{baseUrl}}/api/conversations/1/messages
+Authorization: Bearer {{token}}
+
+{
+
+}
