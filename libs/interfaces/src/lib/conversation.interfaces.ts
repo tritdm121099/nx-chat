@@ -22,4 +22,5 @@ export interface Participant {
 export interface ConversationListItem extends Conversation {
   otherParticipant?: User;
   lastMessage?: Message | null;
+  unreadCount?: number;
 }

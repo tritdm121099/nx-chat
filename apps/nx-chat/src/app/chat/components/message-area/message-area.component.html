@@ -68,6 +68,12 @@ chatService.messages; @let isLoadingMessages = chatService.isLoadingMessages;
     }
   </div>
 
+  @if (typingIndicatorText()) {
+  <div class="px-4 pb-1 pt-0 text-xs text-gray-500 italic">
+    {{ typingIndicatorText() }}
+  </div>
+  } 
+  
   @if (selectedConversation()) {
   <app-message-input></app-message-input>
   }

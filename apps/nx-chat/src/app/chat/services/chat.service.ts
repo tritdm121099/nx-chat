@@ -1,11 +1,12 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { effect, inject, Injectable, signal } from '@angular/core';
+import { computed, effect, inject, Injectable, signal } from '@angular/core';
 import {
   Conversation,
   ConversationListItem,
   Message,
   ReceiveMessagePayload,
   User,
+  UserTypingPayload,
 } from '@nx-chat/interfaces';
 import { EMPTY, Subscription, throwError } from 'rxjs';
 import { catchError, finalize, tap } from 'rxjs/operators';
@@ -32,8 +33,19 @@ export class ChatService {
   searchedUsers = signal<User[]>([]);
   searchError = signal<string | null>(null);
   isStartingConversation = signal(false);
+  typingUsers = signal<
+    Record<number, Omit<UserTypingPayload, 'conversationId'>[]>
+  >({});
+
+  unreadMessageCountTotal = computed(() => {
+    return this.conversations().reduce(
+      (total, convo) => total + (convo.unreadCount || 0),
+      0
+    );
+  });
 
   private newMessageSubscription: Subscription | null = null;
+  private typingStateSubscription: Subscription | null = null;
 
   constructor() {
     effect(() => {
@@ -45,13 +57,13 @@ export class ChatService {
       }
     });
 
-    this.subscribeToNewMessages();
-
     effect(
       () => {
         const currentUser = this.authService.currentUser();
         if (currentUser && this.authService.isLoggedIn()) {
           this.loadConversations();
+          this.subscribeToUserTypingUpdates();
+          this.subscribeToNewMessages();
         } else {
           this.cleanup();
         }
@@ -79,9 +91,72 @@ export class ChatService {
       .subscribe();
   }
 
+  private handleExternalNotification(message: ReceiveMessagePayload) {
+    // 1. Thay đổi Title của Tab
+    if (document.hidden) {
+      const senderName =
+        message.user?.name || message.user?.email || 'New Message';
+      document.title = `(${this.unreadMessageCountTotal()}) ${senderName} - NxChat`; // unreadMessageCountTotal() cần được tạo
+    }
+    // Listener để reset title khi tab active trở lại
+    document.addEventListener(
+      'visibilitychange',
+      () => {
+        if (!document.hidden) {
+          document.title = 'NxChat'; // Reset title gốc
+        }
+      },
+      { once: true }
+    );
+
+    // 2. Thông báo trình duyệt (Browser Notification)
+    if (
+      'Notification' in window &&
+      Notification.permission === 'granted' &&
+      (document.hidden ||
+        this.selectedConversation()?.id !== message.conversationId)
+    ) {
+      const notification = new Notification('New Message on NxChat', {
+        body: `${message.user?.name || message.user?.email}: ${
+          message.content
+        }`,
+        icon: '/favicon.ico', // Đường dẫn tới icon của bạn
+        // tag: `conversation-${message.conversationId}` // Để gom nhóm thông báo
+      });
+      notification.onclick = () => {
+        window.focus(); // Focus vào tab ứng dụng
+        // Có thể thêm logic để navigate tới đúng conversation đó
+        // this.router.navigate(['/chat']); // Ví dụ
+        // this.selectConversationById(message.conversationId); // Cần tạo hàm này
+      };
+    } else if (
+      'Notification' in window &&
+      Notification.permission !== 'denied'
+    ) {
+      // Chưa có quyền, xin quyền (có thể đặt ở chỗ khác, ví dụ khi user settings)
+      Notification.requestPermission().then((permission) => {
+        if (permission === 'granted') {
+          this.handleExternalNotification(message); // Thử lại nếu đã được cấp quyền
+        }
+      });
+    }
+  }
+
   selectConversation(conversation: ConversationListItem | null) {
     this.selectedConversation.set(conversation);
+    if (conversation) {
+      this.markConversationAsRead(conversation.id);
+    }
     this.clearSearchResults();
+  }
+
+  markConversationAsRead(conversationId: number): void {
+    this.conversations.update((convos) =>
+      convos.map((c) =>
+        c.id === conversationId ? { ...c, unreadCount: 0 } : c
+      )
+    );
+    // TODO: Gửi sự kiện "messagesRead" lên server nếu cần đồng bộ trạng thái đã đọc
   }
 
   loadMessages(conversationId: number) {
@@ -121,19 +196,20 @@ export class ChatService {
     // this.messages.update(currentMessages => [...currentMessages, optimisticMessage]);
   }
 
-  // Subscribe to new messages coming from WebSocket
   private subscribeToNewMessages() {
     this.unsubscribeFromNewMessages(); // Ensure no duplicate subscriptions
     this.newMessageSubscription = this.wsService.newMessage$.subscribe(
       (newMessage: ReceiveMessagePayload) => {
         const selectedConvo = this.selectedConversation();
-        // Add message to the list if it belongs to the currently selected conversation
-        if (selectedConvo && newMessage.conversationId === selectedConvo.id) {
+        const isChattingInThisConvo =
+          selectedConvo && newMessage.conversationId === selectedConvo.id;
+
+        if (isChattingInThisConvo) {
           this.messages.update((currentMessages) => [
             ...currentMessages,
             newMessage,
           ]);
-          // TODO: Add scroll-to-bottom logic here or in the component
+          this.markConversationAsRead(newMessage.conversationId);
         }
 
         // Update the conversation list item (last message, timestamp)
@@ -142,24 +218,26 @@ export class ChatService {
             (c) => c.id === newMessage.conversationId
           );
           if (convoIndex > -1) {
-            const updatedConvo = {
-              ...convos[convoIndex],
+            const existingConvo = convos[convoIndex];
+            const updatedConvo: ConversationListItem = {
+              ...existingConvo,
               lastMessage: newMessage,
-              updatedAt: new Date().toISOString(),
-            }; // Use newMessage directly or adjust if needed
-            // Move updated conversation to the top (optional)
-            const updatedList = [
-              updatedConvo,
-              ...convos.slice(0, convoIndex),
-              ...convos.slice(convoIndex + 1),
-            ];
-            return updatedList;
-            // Or just update in place:
-            // convos[convoIndex] = updatedConvo;
-            // return [...convos];
+              updatedAt: newMessage.createdAt,
+              // Tăng unreadCount nếu không phải là conversation đang active
+              unreadCount: !isChattingInThisConvo
+                ? (existingConvo.unreadCount || 0) + 1
+                : 0,
+            };
+            const currentList = [...convos];
+            currentList.splice(convoIndex, 1);
+            return [updatedConvo, ...currentList];
           }
-          return convos; // Return unchanged list if conversation not found
+          return convos;
         });
+
+        if (!isChattingInThisConvo || document.hidden) {
+          this.handleExternalNotification(newMessage);
+        }
       }
     );
   }
@@ -167,6 +245,51 @@ export class ChatService {
   private unsubscribeFromNewMessages() {
     this.newMessageSubscription?.unsubscribe();
     this.newMessageSubscription = null;
+  }
+
+  private subscribeToUserTypingUpdates() {
+    this.typingStateSubscription?.unsubscribe();
+    this.typingStateSubscription = this.wsService
+      .on<UserTypingPayload>('userTypingUpdate')
+      .subscribe((payload) => {
+        this.typingUsers.update((currentTypingUsers) => {
+          const usersInConvo = currentTypingUsers[payload.conversationId] || [];
+          let updatedUsersInConvo;
+
+          if (payload.isTyping) {
+            if (!usersInConvo.some((u) => u.userId === payload.userId)) {
+              updatedUsersInConvo = [
+                ...usersInConvo,
+                {
+                  userId: payload.userId,
+                  userName: payload.userName,
+                  isTyping: true,
+                },
+              ];
+            } else {
+              updatedUsersInConvo = usersInConvo.map((u) =>
+                u.userId === payload.userId
+                  ? { ...u, userName: payload.userName, isTyping: true }
+                  : u
+              );
+            }
+          } else {
+            // Xóa user khỏi danh sách đang gõ
+            updatedUsersInConvo = usersInConvo.filter(
+              (u) => u.userId !== payload.userId
+            );
+          }
+          return {
+            ...currentTypingUsers,
+            [payload.conversationId]: updatedUsersInConvo,
+          };
+        });
+      });
+  }
+
+  sendTypingState(conversationId: number, isTyping: boolean): void {
+    if (!this.wsService.isConnected()) return;
+    this.wsService.emit('typingStateChange', { conversationId, isTyping });
   }
 
   // Call this when the component/service is destroyed or user logs out
@@ -177,6 +300,8 @@ export class ChatService {
     this.messages.set([]);
     this.error.set(null);
     this.clearSearchResults();
+    this.typingStateSubscription?.unsubscribe();
+    this.typingUsers.set({});
   }
 
   // --- Phương thức cho User Search ---
@@ -236,10 +361,12 @@ export class ChatService {
     }
 
     this.http
-      .post<Conversation>('/api/conversations/private', { userId: targetUserId })
+      .post<Conversation>('/api/conversations/private', {
+        userId: targetUserId,
+      })
       .pipe(
         tap((newOrExistingConvoData: Conversation) => {
-          this.loadConversations(); 
+          this.loadConversations();
           this.clearSearchResults();
 
           const findAndSelectNewConvo = () => {

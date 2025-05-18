@@ -1,12 +1,6 @@
-import {
-  effect,
-  inject,
-  Injectable,
-  OnDestroy,
-  signal
-} from '@angular/core';
+import { effect, inject, Injectable, OnDestroy, signal } from '@angular/core';
 import { ReceiveMessagePayload, SendMessageDto } from '@nx-chat/interfaces';
-import { Subject } from 'rxjs';
+import { Observable, Subject } from 'rxjs';
 import { io, Socket } from 'socket.io-client';
 import { AuthService } from './auth.service';
 
@@ -87,9 +81,6 @@ export class WebSocketService implements OnDestroy {
 
     this.socket.on('error', (errorData: any) => {
       console.error('WebSocket Server Error:', errorData);
-      // Handle specific errors (e.g., validation error on send)
-      // Maybe update an error signal for the UI
-      // this.serverError.set(errorData.message || 'An error occurred');
     });
   }
 
@@ -103,19 +94,47 @@ export class WebSocketService implements OnDestroy {
   }
 
   sendMessage(message: SendMessageDto): void {
-    if (!this.socket?.connected) {
-      console.error('Cannot send message, WebSocket is not connected.');
-      // Optionally notify user or queue message
-      return;
-    }
-    this.socket.emit('sendMessage', message, (ack: any) => {
-      // Optional: Handle acknowledgement from server
+    this.emit('sendMessage', message, (ack: any) => {
       if (ack?.status === 'ok') {
         console.log('Message sent successfully, ID:', ack.messageId);
       } else {
         console.error('Message sending failed:', ack);
       }
     });
+  }
+
+  on<T>(eventName: string): Observable<T> {
+    if (!this.socket) {
+      console.error(
+        'Socket not initialized for listening to event:',
+        eventName
+      );
+      return new Observable<T>((observer) => observer.complete());
+    }
+
+    return new Observable<T>((observer) => {
+      this.socket?.on(eventName, (data: T) => {
+        observer.next(data);
+      });
+      // Handle error or disconnect events
+      return () => {
+        this.socket?.off(eventName);
+      };
+    });
+  }
+
+  emit<T>(eventName: string, data: T, ack?: (response: any) => void): void {
+    if (!this.socket?.connected) {
+      console.error(
+        `Cannot emit event ${eventName}, WebSocket is not connected.`
+      );
+      return;
+    }
+    if (ack) {
+      this.socket.emit(eventName, data, ack);
+    } else {
+      this.socket.emit(eventName, data);
+    }
   }
 
   // Add methods for other events if needed (e.g., joinRoom, leaveRoom, typing)

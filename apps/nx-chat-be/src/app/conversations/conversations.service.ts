@@ -1,16 +1,13 @@
 import {
-  Injectable,
-  NotFoundException,
   ForbiddenException,
-  ConflictException,
+  Injectable
 } from '@nestjs/common';
-import { PrismaService } from '../core/prisma/prisma.service';
 import {
   Conversation,
-  Message,
   ConversationListItem,
-  User,
+  Message
 } from '@nx-chat/interfaces';
+import { PrismaService } from '../core/prisma/prisma.service';
 
 @Injectable()
 export class ConversationsService {
@@ -132,7 +129,7 @@ export class ConversationsService {
         },
       },
     });
-    return messages as Message[]; // TODO UPDATE
+    return messages as unknown as Message[]; // TODO UPDATE
   }
 
   async createMessage(
@@ -176,7 +173,7 @@ export class ConversationsService {
       return createdMsg;
     });
 
-    return newMessage as Message; // Todo update
+    return newMessage as unknown as Message; // Todo update
   }
 
   // Helper function for ChatGateway to get conversation IDs for a user
